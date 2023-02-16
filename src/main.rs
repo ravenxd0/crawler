@@ -35,6 +35,7 @@ impl Crawler {
 
     pub fn crawl(&mut self, source: &str) -> Result<()> {
         let now = Instant::now();
+        fs::remove_dir_all("static")?;
 
         // HashSet to keep track of visited links
         let mut visited = HashSet::new();
@@ -46,7 +47,7 @@ impl Crawler {
         let body = self.fetch_html(source); // HTML
         Self::write_file("", &body)?;
         let found_urls = self.get_links(&body); // Links found in html
-        
+
         let mut new_urls: HashSet<String> = found_urls
             .difference(&visited) // remove visited urls from found urls
             .map(std::string::ToString::to_string)
@@ -57,7 +58,7 @@ impl Crawler {
                 .par_iter()
                 .map(|url| {
                     let body = self.fetch_html(url);
-                    if let Err(e) = Self::write_file(&url[source.len()-1..], &body) {
+                    if let Err(e) = Self::write_file(&url[source.len() - 1..], &body) {
                         eprintln!("Error: {e}");
                     };
                     let links = self.get_links(&body);
@@ -163,6 +164,7 @@ fn main() -> Result<()> {
     if origin_url.starts_with("http") {
         let mut crawler = Crawler::new()?;
         crawler.crawl(origin_url.as_str())?;
+        println!("{:#?}",crawler.found_urls);
     } else {
         eprintln!("Error: Not Valid URL");
     }

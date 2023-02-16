@@ -12,6 +12,8 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
 struct Crawler {
     client: Client,
     given_url: String,
@@ -19,7 +21,7 @@ struct Crawler {
 }
 
 impl Crawler {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
+    pub fn new() -> Result<Self> {
         let crawler = Self {
             client: Client::builder()
                 .danger_accept_invalid_certs(true)
@@ -31,19 +33,20 @@ impl Crawler {
         Ok(crawler)
     }
 
-    pub fn crawl(&mut self, url: &str) -> Result<(), Box<dyn Error>> {
+    pub fn crawl(&mut self, source: &str) -> Result<()> {
         let now = Instant::now();
 
         // HashSet to keep track of visited links
         let mut visited = HashSet::new();
-        visited.insert(url.to_string());
+        visited.insert(source.to_string());
 
         // Given URL
-        self.given_url = url.to_string();
+        self.given_url = source.to_string();
 
-        let body = self.fetch_html(url); // HTML
+        let body = self.fetch_html(source); // HTML
+        Self::write_file("", &body)?;
         let found_urls = self.get_links(&body); // Links found in html
-
+        
         let mut new_urls: HashSet<String> = found_urls
             .difference(&visited) // remove visited urls from found urls
             .map(std::string::ToString::to_string)
@@ -54,6 +57,9 @@ impl Crawler {
                 .par_iter()
                 .map(|url| {
                     let body = self.fetch_html(url);
+                    if let Err(e) = Self::write_file(&url[source.len()-1..], &body) {
+                        eprintln!("Error: {e}");
+                    };
                     let links = self.get_links(&body);
                     println!("Visited: {url} found {} links", links.len());
                     links
@@ -122,14 +128,21 @@ impl Crawler {
             })
     }
 
-    fn save_urls(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn write_file(path: &str, content: &str) -> Result<()> {
+        fs::create_dir_all(format!("static{}", path))?;
+        let index = format!("static{path}/index.html");
+        fs::write(&index, content)?;
+        Ok(())
+    }
+
+    fn save_urls(&self) -> Result<()> {
         let mut file = fs::File::create("found_urls.txt")?;
         let mut text = String::new();
         for url in self.found_urls.iter() {
             text.push_str(url);
             text.push('\n');
 
-            file.write( text.as_bytes() )?;
+            file.write(text.as_bytes())?;
 
             text.clear();
         }
@@ -138,7 +151,7 @@ impl Crawler {
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let mut args = env::args();
     if args.len() != 2 {
         eprintln!("Usage: crawler <URL>");
